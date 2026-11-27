@@ -177,27 +177,6 @@ static uint8_t bcd_to_dec(uint8_t val)
     return ((val >> 4) * 10) + (val & 0x0F);
 }
 
-static uint8_t dec_to_bcd(uint8_t val)
-{
-    return ((val / 10) << 4) | (val % 10);
-}
-
-static void ds3231_set_time(uint8_t sec, uint8_t min, uint8_t hour,
-                            uint8_t day_of_week, uint8_t day, uint8_t month, uint8_t year)
-{
-    uint8_t buf[8];
-    buf[0] = 0x00;
-    buf[1] = dec_to_bcd(sec);
-    buf[2] = dec_to_bcd(min);
-    buf[3] = dec_to_bcd(hour);
-    buf[4] = dec_to_bcd(day_of_week);
-    buf[5] = dec_to_bcd(day);
-    buf[6] = dec_to_bcd(month);
-    buf[7] = dec_to_bcd(year);
-
-    i2c_write_blocking(i2c1, addr_ds3231, buf, 8, false);
-}
-
 static void ds3231_read_time(uint8_t *sec, uint8_t *min, uint8_t *hour,
                              uint8_t *day, uint8_t *month, uint8_t *year)
 {
@@ -212,39 +191,6 @@ static void ds3231_read_time(uint8_t *sec, uint8_t *min, uint8_t *hour,
     *day = bcd_to_dec(data[4] & 0x3F);
     *month = bcd_to_dec(data[5] & 0x1F);
     *year = bcd_to_dec(data[6]);
-}
-
-static void revisar_sincronizacion_usb(void)
-{
-    static char rx_buf[32];
-    static uint8_t idx = 0;
-    int c;
-
-    // Lee todos los caracteres disponibles en el buffer USB sin bloquear el bucle
-    while ((c = getchar_timeout_us(0)) != PICO_ERROR_TIMEOUT)
-    {
-        if (c == '\n' || c == '\r')
-        {
-            if (idx > 0)
-            {
-                rx_buf[idx] = '\0';
-                int Y, M, D, h, m, s;
-
-                // Si llega el formato "SYNC:2026-11-25 20:46:30"
-                if (sscanf(rx_buf, "SYNC:%d-%d-%d %d:%d:%d", &Y, &M, &D, &h, &m, &s) == 6)
-                {
-                    ds3231_set_time((uint8_t)s, (uint8_t)m, (uint8_t)h, 1,
-                                    (uint8_t)D, (uint8_t)M, (uint8_t)(Y - 2000));
-                    printf("DS3231 sincronizado: %04d/%02d/%02d %02d:%02d:%02d\n", Y, M, D, h, m, s);
-                }
-                idx = 0; // Reiniciar buffer
-            }
-        }
-        else if (idx < sizeof(rx_buf) - 1)
-        {
-            rx_buf[idx++] = (char)c;
-        }
-    }
 }
 
 int8_t init_led_indi(void)
@@ -342,9 +288,6 @@ int main()
 
     while (1)
     {
-        // ****** DESCOMENTAR SI SE REQUIERE ACTUALIZAR LA HORA Y FECHA DEL RTC ds3231
-        // revisar_sincronizacion_usb();
-
         ds3231_read_time(&ss, &mm, &hh, &DD, &MM, &YYYY);
         ffffff = (uint32_t)(time_us_64() - f_sec_init);
 
